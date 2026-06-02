@@ -227,8 +227,23 @@ def commit_and_tag(repo_dir, version):
         return False
 
     tag_name = f"v{version}"
+
+    # 检测 tag 是否已存在（本地或远程），存在则先删除再重建
+    local_tag = run_command(f"git tag -l {tag_name}", cwd=repo_dir, check=False)
+    remote_tag = run_command(f"git ls-remote --tags origin {tag_name}", cwd=repo_dir, check=False)
+
+    if local_tag and local_tag.strip():
+        print(f"本地 tag {tag_name} 已存在，删除后重建...")
+        run_command(f"git tag -d {tag_name}", cwd=repo_dir, check=False)
+
+    if remote_tag and remote_tag.strip():
+        print(f"远程 tag {tag_name} 已存在，删除后重建...")
+        run_command(f"git push --delete origin {tag_name}", cwd=repo_dir, check=False)
+
+    # 创建并推送 tag
     result = run_command(f"git tag {tag_name}", cwd=repo_dir)
     if result is None:
+        print(f"\n❌ 创建标签 {tag_name} 失败")
         return False
 
     result = run_command(f"git push origin {tag_name}", cwd=repo_dir)
@@ -275,6 +290,28 @@ def validate_repo_path(repo_path):
     return True
 
 
+def check_write_access(repo_path):
+    """预检目标目录是否可写，提前发现沙箱权限问题"""
+    path = Path(repo_path)
+    path.mkdir(parents=True, exist_ok=True)
+
+    test_file = path / ".wb_publish_test"
+    try:
+        test_file.write_text("test", encoding="utf-8")
+        test_file.unlink()
+        return True
+    except (PermissionError, OSError) as e:
+        print(f"\n❌ 目标路径无写入权限: {repo_path}")
+        print(f"   错误: {e}")
+        print("\n   可能原因：")
+        print("   1. WorkBuddy 沙箱限制了对外部路径的写入")
+        print("   2. 文件系统权限不足")
+        print("\n   解决方法：")
+        print("   - 如果路径在沙箱外（如 E:\\Coding\\MySkills\\），请先开启完全访问权限")
+        print("   - 或将仓库目录移动到 Downloads\\workspace 下")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Skill Publisher")
     parser.add_argument("--skill-name", required=True, help="Skill 名称（源 skill，在 ~/.workbuddy/skills/ 中）")
@@ -289,6 +326,9 @@ def main():
     print(f"目标仓库: {args.repo_path}")
 
     if not validate_repo_path(args.repo_path):
+        return 1
+
+    if not check_write_access(args.repo_path):
         return 1
 
     skill_dir = find_skill_dir(args.skill_name)

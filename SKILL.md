@@ -1,6 +1,6 @@
 ---
 name: skill-publisher
-version: 1.1.0
+version: 1.1.1
 ---
 
 # skill-publisher
@@ -38,7 +38,7 @@ version: 1.1.0
 
 1. 用户提供 skill_name（源 skill）和 repo_path（目标 git 仓库）
 2. 如果信息不全，询问用户补充
-3. 检查 repo_path 是否合法（不能在 WorkBuddy skills 目录下）
+3. 检查 repo_path 是否合法（不能在 WorkBuddy skills 目录下）+ 写入权限预检
 4. 执行发布流程：
    - 从 WorkBuddy skills 复制源 skill 到 repo_path
    - 在 repo_path 初始化 git（如需要）
@@ -72,6 +72,8 @@ python publish.py --skill-name <skill_name> --repo-path <repo_path> \
 - 会根据 SKILL.md 中的版本号自动提取或询问用户
 - 会自动创建默认 `.gitignore`（如不存在）
 - 使用 `--clean` 可删除目标目录中源 skill 不再包含的文件（例如旧版本的 `.github/workflows`）
+- **Tag 冲突自动处理**：若本地或远程已存在同名 tag，自动删除后重建，不会因重复发布而失败
+- **写入权限预检**：复制文件前先检测目标路径是否可写，提前发现沙箱权限问题并给出解决建议
 
 ## 依赖
 

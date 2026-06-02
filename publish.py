@@ -55,12 +55,27 @@ def find_skill_dir(skill_name):
     return None
 
 
-def copy_skill_files(skill_dir, repo_dir):
+def copy_skill_files(skill_dir, repo_dir, clean=False):
     """复制 skill 文件到仓库目录"""
     print(f"复制文件: {skill_dir} -> {repo_dir}")
 
     repo_dir = Path(repo_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
+
+    source_items = {item.name for item in skill_dir.iterdir()}
+
+    if clean:
+        print("清理模式已开启，将删除目标目录中源 skill 不存在的文件...")
+        for item in repo_dir.iterdir():
+            if item.name == ".git":
+                continue
+            if item.name not in source_items:
+                if item.is_dir():
+                    shutil.rmtree(item)
+                    print(f"  删除目录: {item.name}")
+                else:
+                    item.unlink()
+                    print(f"  删除文件: {item.name}")
 
     for item in skill_dir.iterdir():
         if item.name == ".git":
@@ -74,8 +89,28 @@ def copy_skill_files(skill_dir, repo_dir):
         else:
             shutil.copy2(item, target)
 
-    print(f"文件复制完成: {len(list(skill_dir.iterdir()))} 个项目")
+    print(f"文件复制完成: {len(source_items)} 个项目")
     return True
+
+
+def ensure_gitignore(repo_dir):
+    """确保目标目录有 .gitignore 文件"""
+    gitignore_path = Path(repo_dir) / ".gitignore"
+    if gitignore_path.exists():
+        return
+
+    gitignore_content = """# WorkBuddy / OpenClaw skill ignore
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
+node_modules/
+__pycache__/
+*.pyc
+.env
+"""
+    gitignore_path.write_text(gitignore_content, encoding="utf-8")
+    print(f"已创建默认 .gitignore: {gitignore_path}")
 
 
 def check_git_initialized(repo_dir):
@@ -121,20 +156,44 @@ def extract_version_from_skillmd(skillmd_path):
 
 
 def update_skillmd_version(skillmd_path, version, changelog=""):
-    """更新 SKILL.md 中的版本号和变更日志"""
+    """更新 SKILL.md 中的版本号（优先修改 frontmatter，找不到则在 frontmatter 中增加）"""
     if not skillmd_path.exists():
         return False
 
     content = skillmd_path.read_text(encoding="utf-8")
+    updated = False
 
-    if f"version: {version}" not in content and f"## 版本" not in content:
-        new_section = f"\n\n## 版本 {version}\n\n{changelog if changelog else '首次发布'}"
-        content += new_section
+    if content.startswith("---"):
+        match = re.match(r'^---\n(.*?)\n---\n?(.*)$', content, re.DOTALL)
+        if match:
+            frontmatter = match.group(1)
+            body = match.group(2)
 
-        skillmd_path.write_text(content, encoding="utf-8")
-        print(f"已更新 SKILL.md 版本为: {version}")
-        return True
+            version_pattern = r'^version:\s*\S+'
+            if re.search(version_pattern, frontmatter, re.MULTILINE):
+                new_frontmatter = re.sub(
+                    version_pattern,
+                    f"version: {version}",
+                    frontmatter,
+                    count=1,
+                    flags=re.MULTILINE
+                )
+            else:
+                new_frontmatter = frontmatter.rstrip() + f"\nversion: {version}"
 
+            content = f"---\n{new_frontmatter}\n---\n{body}"
+            updated = True
+
+    if not updated:
+        content = f"---\nversion: {version}\n---\n\n{content}"
+
+    if changelog:
+        version_section = f"## 版本 {version}"
+        if version_section not in content:
+            content += f"\n\n{version_section}\n\n{changelog}\n"
+
+    skillmd_path.write_text(content, encoding="utf-8")
+    print(f"已更新 SKILL.md 版本为: {version}")
     return True
 
 
@@ -152,7 +211,19 @@ def commit_and_tag(repo_dir, version):
 
     result = run_command("git push origin main", cwd=repo_dir, check=False)
     if result is None:
-        print("推送失败，可能需要先配置 remote 或登录")
+        remote_output = run_command("git remote -v", cwd=repo_dir, check=False)
+        if not remote_output or "origin" not in remote_output:
+            print("\n❌ 推送失败原因：未配置远程仓库")
+            print("   请先在目标目录执行: git remote add origin <仓库地址>")
+            print("   例如: git remote add origin git@github.com:username/repo.git")
+        else:
+            print("\n❌ 推送失败，可能原因：")
+            print("   1. SSH 密钥未配置或 GitHub 未添加公钥")
+            print("   2. 网络连接问题")
+            print("   3. 远程仓库权限不足")
+            print("\n   建议检查:")
+            print("   - ssh -T git@github.com")
+            print("   - git remote -v")
         return False
 
     tag_name = f"v{version}"
@@ -162,6 +233,7 @@ def commit_and_tag(repo_dir, version):
 
     result = run_command(f"git push origin {tag_name}", cwd=repo_dir)
     if result is None:
+        print(f"\n❌ 标签 {tag_name} 推送失败")
         return False
 
     print(f"标签 {tag_name} 已推送")
@@ -209,6 +281,7 @@ def main():
     parser.add_argument("--repo-path", required=True, help="目标 Git 仓库目录（必须是独立目录，不能在 skills 下）")
     parser.add_argument("--version", help="版本号")
     parser.add_argument("--changelog", help="变更日志")
+    parser.add_argument("--clean", action="store_true", help="清理目标目录中源 skill 不存在的文件")
 
     args = parser.parse_args()
 
@@ -229,8 +302,10 @@ def main():
 
     print(f"找到 skill 目录: {skill_dir}")
 
-    if not copy_skill_files(skill_dir, args.repo_path):
+    if not copy_skill_files(skill_dir, args.repo_path, clean=args.clean):
         return 1
+
+    ensure_gitignore(args.repo_path)
 
     if not check_git_initialized(args.repo_path):
         print("git 未初始化，正在初始化...")

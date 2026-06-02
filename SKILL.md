@@ -1,6 +1,6 @@
 ---
 name: skill-publisher
-version: 1.0.0
+version: 1.1.0
 ---
 
 # skill-publisher
@@ -32,6 +32,7 @@ version: 1.0.0
 ### 可选参数
 - **version**: 版本号（如 1.0.0），默认从 SKILL.md 读取或询问用户
 - **changelog**: 变更日志内容，默认空
+- **clean**: 清理目标目录中源 skill 不存在的文件（如之前版本的 `.github/workflows` 等）
 
 ## 使用步骤
 
@@ -59,7 +60,7 @@ version: 1.0.0
 
 ```bash
 python publish.py --skill-name <skill_name> --repo-path <repo_path> \
-  [--version <version>] [--changelog <changelog>]
+  [--version <version>] [--changelog <changelog>] [--clean]
 ```
 
 ## 注意事项
@@ -69,6 +70,8 @@ python publish.py --skill-name <skill_name> --repo-path <repo_path> \
 - **远程仓库需提前配置**：在 repo_path 目录下通过 `git remote add origin <url>` 添加远程地址（支持 GitHub、Gitee 等任意 Git 托管平台）
 - 推送时会自动推送 main 分支和版本标签
 - 会根据 SKILL.md 中的版本号自动提取或询问用户
+- 会自动创建默认 `.gitignore`（如不存在）
+- 使用 `--clean` 可删除目标目录中源 skill 不再包含的文件（例如旧版本的 `.github/workflows`）
 
 ## 依赖
 

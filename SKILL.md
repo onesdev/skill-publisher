@@ -79,3 +79,23 @@ python publish.py --skill-name <skill_name> --repo-path <repo_path> \
 
 - git
 - python3
+
+## Agent 执行经验
+
+调用本技能时，Agent 应遵循以下经验以避免常见问题：
+
+### 沙箱权限
+- 若 `repo_path` 在 WorkBuddy 沙箱默认路径之外（非 `Downloads/workspace` 或 `.workbuddy`），`cp` 和 `git push` 会被沙箱阻止
+- **不要手动 `Copy-Item`/`cp` 文件**，直接运行 `publish.py` 即可（脚本内部已处理文件复制）
+- 若脚本报告写入权限错误，向用户请求「完全访问权限」后重试
+
+### 版本号更新
+- 统一使用 SKILL.md frontmatter 中的 `version:` 字段，脚本会自动检测并更新
+- 不要手动改版本号后不通知脚本；让 `--version` 参数统一管理
+
+### amend 后重发
+- 如果发现文件错误需要修正后重新发布同一版本，使用 `--clean` 清理残留
+- 脚本已内置 tag 冲突处理，无需手动 `git tag -d` + `git push --delete`
+
+### 发布后验证
+- 推送成功后检查 GitHub 仓库页面：确认新 tag 可见、SKILL.md 版本号一致
